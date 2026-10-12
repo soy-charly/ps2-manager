@@ -256,59 +256,78 @@ def normalize_game_id(value):
     )
 
 
+
 def find_game_id_from_iso(iso):
+    """Obtiene la ID de PS2 del nombre o de SYSTEM.CNF dentro de la ISO."""
+    import re
+    import subprocess
+    from pathlib import Path
 
-    game_id = normalize_game_id(
-        iso.name
+    iso_path = Path(iso)
+
+    # 1. Buscar una ID que ya esté en el nombre del archivo.
+    match = re.search(
+        r"\b([A-Z]{4}[_-]?\d{3}[._-]\d{2})\b",
+        iso_path.stem,
+        re.IGNORECASE,
     )
+    if match:
+        return normalize_game_id(match.group(1))
 
-    if game_id:
-        return game_id
-
+    # 2. Leer SYSTEM.CNF, donde normalmente aparece BOOT2.
     try:
-
         result = subprocess.run(
-            [
-                "isoinfo",
-                "-i",
-                str(iso),
-                "-d",
-            ],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.DEVNULL,
+            ["isoinfo", "-i", str(iso_path), "-x", "/SYSTEM.CNF;1"],
+            capture_output=True,
             text=True,
+            errors="replace",
             timeout=15,
+            check=False,
         )
 
-        output = result.stdout
+        system_cnf = result.stdout or ""
+        match = re.search(
+            r"BOOT2\s*=\s*cdrom\d*:\\([A-Z]{4}[_-]?\d{3}[._-]\d{2})",
+            system_cnf,
+            re.IGNORECASE,
+        )
+        if match:
+            return normalize_game_id(match.group(1))
 
-        patterns = [
-            r"Volume id:\s*([A-Z]{4}[_-]?\d{3}[._-]?\d{2})",
-            r"Application id:\s*([A-Z]{4}[_-]?\d{3}[._-]?\d{2})",
-        ]
+    except (OSError, subprocess.TimeoutExpired):
+        pass
 
-        for pattern in patterns:
+    # 3. Último recurso: consultar los metadatos ISO.
+    try:
+        result = subprocess.run(
+            ["isoinfo", "-d", "-i", str(iso_path)],
+            capture_output=True,
+            text=True,
+            errors="replace",
+            timeout=15,
+            check=False,
+        )
 
+        metadata = result.stdout or ""
+        for field in ("Volume id", "Application id"):
             match = re.search(
-                pattern,
-                output,
-                re.IGNORECASE,
+                rf"^{re.escape(field)}:\s*(.+)$",
+                metadata,
+                re.IGNORECASE | re.MULTILINE,
             )
-
             if match:
-
-                game_id = normalize_game_id(
-                    match.group(1)
+                id_match = re.search(
+                    r"\b([A-Z]{4}[_-]?\d{3}[._-]\d{2})\b",
+                    match.group(1),
+                    re.IGNORECASE,
                 )
+                if id_match:
+                    return normalize_game_id(id_match.group(1))
 
-                if game_id:
-                    return game_id
-
-    except Exception:
+    except (OSError, subprocess.TimeoutExpired):
         pass
 
     return None
-
 
 # ============================================================
 # NOMBRE DEL JUEGO
@@ -1846,6 +1865,7 @@ class PS2Manager:
     # SELECT
     # --------------------------------------------------------
 
+    
     def toggle_selection(self):
 
         if self.mode != "source":
@@ -1854,35 +1874,10 @@ class PS2Manager:
         if not self.isos:
             return
 
-        game = self.isos[
-            self.cursor
-        ]
-
-        if (
-            game["id"]
-            in self.installed_ids()
-        ):
-
-            self.message = (
-                "Ese juego ya está instalado"
-            )
-
-            return
-
-        if (
-            self.cursor
-            in self.selected
-        ):
-
-            self.selected.remove(
-                self.cursor
-            )
-
+        if self.cursor in self.selected:
+            self.selected.remove(self.cursor)
         else:
-
-            self.selected.add(
-                self.cursor
-            )
+            self.selected.add(self.cursor)
 
     # --------------------------------------------------------
     # INSTALL
@@ -2341,63 +2336,83 @@ class PS2Manager:
             )
 
         self.refresh_all()
+
+
     def rename_selected_isos(self):
+        import re
+        from pathlib import Path
+
         if self.mode != "source":
             self.message = "Esta función solo está disponible en el modo de juegos fuente."
             return
 
-        if not self.isos:
-            self.message = "No hay juegos disponibles"
-            return
-
         if not self.selected:
-            self.message = "No hay juegos seleccionados"
+            self.message = "No hay juegos seleccionados."
             return
 
-        source = Path(self.config["source"])
+        source_dir = Path(self.config["source"])
         renamed = 0
         errors = []
 
         for index in sorted(self.selected):
-            iso = self.isos[index]
-            old_path = iso["path"]
-            game_id = iso["id"]
-            if game_id == "UNKNOWN":
-                errors.append(f"No se pudo obtener el ID de {old_path.name}")
+            if index < 0 or index >= len(self.isos):
                 continue
 
-            game_name = iso["name"]
+            iso = self.isos[index]
+            old_path = Path(iso["path"])
+
+            if not old_path.is_file():
+                errors.append(f"No existe: {old_path.name}")
+                continue
+
+            game_id = find_game_id_from_iso(old_path)
+            if not game_id or game_id == "UNKNOWN":
+                game_id = iso.get("id", "UNKNOWN")
+
+            if not game_id or game_id == "UNKNOWN":
+                errors.append(f"No se pudo obtener el ID: {old_path.name}")
+                continue
+
+            game_id = str(game_id).strip()
+            game_name = old_path.stem
+
+            # Evita repetir el ID si el nombre ya lo incluye.
+            game_name = re.sub(
+                r"^[A-Z]{4}[_-]?\d{3}[._-]\d{2}\s*[-_]\s*",
+                "",
+                game_name,
+                flags=re.IGNORECASE,
+            ).strip()
+
             if not game_name:
-                game_name = game_id  # fallback to ID if cleaned name is empty
+                game_name = str(iso.get("name", "")).strip()
+            if not game_name:
+                game_name = game_id
 
-            # Construct new name: [id]-[Game name].iso
             new_name = f"{game_id}-{game_name}.iso"
-            new_path = source / new_name
+            new_path = source_dir / new_name
 
-            # Check if the new file already exists
+            if old_path.name == new_name:
+                continue
+
             if new_path.exists():
-                errors.append(f"El archivo {new_name} ya existe")
+                errors.append(f"Ya existe: {new_name}")
                 continue
 
             try:
                 old_path.rename(new_path)
                 renamed += 1
-                # Update the ISO entry in self.isos for the renamed file? We'll refresh later.
-            except Exception as e:
-                errors.append(f"Error al renombrar {old_path.name}: {e}")
+            except OSError as exc:
+                errors.append(f"{old_path.name}: {exc}")
+
+        self.selected.clear()
+        self.refresh_all()
 
         if errors:
-            self.message = "Errores: " + "; ".join(errors)
+            self.message = f"Renombrados: {renamed}. Errores: " + "; ".join(errors[:5])
         else:
             self.message = f"Renombrados {renamed} archivo(s)"
 
-        # Refresh the list to reflect the new filenames
-        self.refresh_all()
-
-        # Clear selection because the indices may have changed
-        self.selected.clear()
-
-    # --------------------------------------------------------
     # SEARCH
     # --------------------------------------------------------
 
