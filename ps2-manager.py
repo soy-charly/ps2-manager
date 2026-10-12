@@ -1617,6 +1617,7 @@ class PS2Manager:
                 "[SPACE] seleccionar  "
                 "[ENTER] instalar  "
                 "[A] descargar/subir ART  "
+                "[M] renombrar  "
                 "[/] buscar  "
                 "[N] siguiente  [R] refrescar  "
                 "[Q] salir"
@@ -2340,6 +2341,61 @@ class PS2Manager:
             )
 
         self.refresh_all()
+    def rename_selected_isos(self):
+        if self.mode != "source":
+            self.message = "Esta función solo está disponible en el modo de juegos fuente."
+            return
+
+        if not self.isos:
+            self.message = "No hay juegos disponibles"
+            return
+
+        if not self.selected:
+            self.message = "No hay juegos seleccionados"
+            return
+
+        source = Path(self.config["source"])
+        renamed = 0
+        errors = []
+
+        for index in sorted(self.selected):
+            iso = self.isos[index]
+            old_path = iso["path"]
+            game_id = iso["id"]
+            if game_id == "UNKNOWN":
+                errors.append(f"No se pudo obtener el ID de {old_path.name}")
+                continue
+
+            game_name = iso["name"]
+            if not game_name:
+                game_name = game_id  # fallback to ID if cleaned name is empty
+
+            # Construct new name: [id]-[Game name].iso
+            new_name = f"{game_id}-{game_name}.iso"
+            new_path = source / new_name
+
+            # Check if the new file already exists
+            if new_path.exists():
+                errors.append(f"El archivo {new_name} ya existe")
+                continue
+
+            try:
+                old_path.rename(new_path)
+                renamed += 1
+                # Update the ISO entry in self.isos for the renamed file? We'll refresh later.
+            except Exception as e:
+                errors.append(f"Error al renombrar {old_path.name}: {e}")
+
+        if errors:
+            self.message = "Errores: " + "; ".join(errors)
+        else:
+            self.message = f"Renombrados {renamed} archivo(s)"
+
+        # Refresh the list to reflect the new filenames
+        self.refresh_all()
+
+        # Clear selection because the indices may have changed
+        self.selected.clear()
 
     # --------------------------------------------------------
     # SEARCH
@@ -2728,6 +2784,11 @@ class PS2Manager:
                 if self.mode == "hdd":
 
                     self.delete_current()
+            elif key in (
+                ord("m"),
+                ord("M"),
+            ):
+                self.rename_selected_isos()
 
             elif key == ord("/"):
 

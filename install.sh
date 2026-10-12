@@ -265,9 +265,9 @@ instalar_scripts() {
     echo "Instalando ps2-manager.py y el launcher en $BIN_DIR..."
 
     sudo install -m755 "$REPO_DIR/ps2-manager.py" "$BIN_DIR/ps2-manager.py"
-    sudo install -m755 "$REPO_DIR/launcher.sh" "$BIN_DIR/ps2-manager-launcher.sh"
+    sudo install -m755 "$REPO_DIR/launcher.sh" "$BIN_DIR/ps2-manager-launcher"
 
-    echo "Instalados: $BIN_DIR/ps2-manager.py y $BIN_DIR/ps2-manager-launcher.sh"
+    echo "Instalados: $BIN_DIR/ps2-manager.py y $BIN_DIR/ps2-manager-launcher"
     echo
 }
 
@@ -300,7 +300,7 @@ PS2_MANAGER="$BIN_DIR/ps2-manager.py"
 EOF
 
         echo "Configuración inicial guardada en $conf"
-        echo "(vuelve a lanzar ps2-manager-launcher.sh para completar NAS/usuario)"
+        echo "(vuelve a lanzar ps2-manager-launcher para completar NAS/usuario)"
         echo
 
         return
@@ -391,7 +391,7 @@ echo " Instalación terminada"
 echo "============================================================"
 echo
 echo "Ejecuta:"
-echo "  ps2-manager-launcher.sh"
+echo "  ps2-manager-launcher"
 echo
 echo "La primera vez que elijas NAS te pedirá usuario/contraseña"
 echo "(se guardan en $CONFIG_DIR/nas-credentials con permisos 600)."
