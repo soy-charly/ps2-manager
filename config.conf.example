@@ -1,0 +1,9 @@
+# Copia esto a ~/.config/ps2-manager/config.conf y ajusta los valores,
+# o edítalo desde la propia TUI con la tecla F3.
+
+source=/home/tu_usuario/ps2/DVD
+art_source=/home/tu_usuario/ps2/ART
+device=/dev/sdX
+opl_partition=+OPL
+hdl_dump=hdl_dump
+pfsshell=pfsshell

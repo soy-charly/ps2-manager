@@ -1,0 +1,10 @@
+# Copia esto a ~/.config/ps2-manager/launcher.conf y ajusta los valores,
+# o simplemente ejecuta launcher.sh: si no existe, te lo pide interactivamente
+# y lo genera por ti.
+
+NAS="//192.168.1.10/PS2"
+NAS_USER="tu_usuario_nas"
+MOUNT="$HOME/.local/share/ps2-manager/nas"
+OPL="$HOME/.local/share/oplpctools/bin/oplpctools"
+LOCAL="$HOME/ps2"
+PS2_MANAGER="$HOME/.local/bin/ps2-manager.py"
